@@ -54,8 +54,8 @@ class Transformation:
         self.max_lighting = 1
         self.can_blur = True
         self.prob_blur = 0.05
-        self.min_coverage = 0.3
-        self.max_coverage = 0.8
+        self.min_coverage = 0.8
+        self.max_coverage = 0.9
         self.can_edge_crop = True
         self.edge_crop_prob = 0.3
         self.max_edge_crop = 0.5
@@ -76,8 +76,9 @@ class Transformation:
     def post_transform(self, image, background):
         self.image = image
         self.background = background
-
-        return self.image
+        _, cropped_axis = self.edge_crop(image, True)
+        self.resize(self.image, background.size)
+        return self.superimpose(self.image, self.background,cropped_axis)
 
     @property
     def random(self):
@@ -127,8 +128,25 @@ class Transformation:
         if not return_which_cropped:
             return self.image
         else:
-            return self.image, (left == 0, top == 0, right == w, bottom == h)
+            return self.image, (left != 0, top != 0, right != w, bottom != h)
 
+    def resize(self, image, canvas_size):
+        min_width, min_height = [self.min_coverage * x for x in canvas_size]
+        max_width, max_height = [self.max_coverage * x for x in canvas_size]
+        new_width, new_height = [self.random_int(min_width, max_width), self.random_int(min_height, max_height)]
+        image.thumbnail([new_width, new_height])
+        self.image = image
+        return self.image
+
+    def superimpose(self, image, background, where_info=[0, 0, 0, 0]):
+        x_options, y_options = background.size[0] - image.size[0], background.size[1] - image.size[1]
+        x, y = self.random_int(0, x_options), self.random_int(0, y_options)
+        if where_info[0] or where_info[2]:
+            x = where_info[2] * x_options
+        if where_info[1] or where_info[3]:
+            y = where_info[3] * y_options
+        background.paste(image, (x, y), mask=image)
+        return background
 
 class ImageMaker:
     def __init__(self, data, num_samples, **kwargs):
@@ -139,18 +157,14 @@ class ImageMaker:
     def augment(self, image):
         return self.tfms.transform(image)
 
-    def superimpose(self, image, background, x, y):
-        return background.paste(image, (x, y), mask=image)
-
     def generate(self):
         for _ in tqdm(range(self.num_samples), ascii=True, desc="Progress"):
             image = Image.open(random.choice(self.data.images)).convert('RGBA')
             image = self.augment(image)
-
             background = Image.open(random.choice(self.data.backgrounds)).convert('RGBA')
 
-            self.superimpose(image, background, 100, 100)
-            background.show()
+            new_img = self.tfms.post_transform(image, background)
+            new_img.show()
 
 
-ImageMaker(ImageData('images', 'background'), 5).generate()
+ImageMaker(ImageData('images', 'background'), 10).generate()
