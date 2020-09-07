@@ -1,8 +1,9 @@
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageEnhance
 import os
 import random
 from tqdm import tqdm
 from utils import *
+
 
 class ImageData:
     def __init__(self, img_files, bg_files):
@@ -47,15 +48,19 @@ class Transformation:
         self.can_flip_vertical = True
         self.prob_flip = 0.5
         self.max_rotate = 90.0
-        self.max_lighting = 1
+        self.can_lighten = True
+        self.max_lighting = 0.6  # 60%
+        self.lighting_prob = 0.4
         self.can_blur = True
         self.prob_blur = 0.05
-        self.min_coverage = 0.8
-        self.max_coverage = 0.9
+        self.min_coverage = 0.95
+        self.max_coverage = 0.99
         self.can_edge_crop = True
         self.edge_crop_prob = 0.3
         self.max_edge_crop = 0.5
         self.min_edge_crop = 0
+        self.can_stretch = True
+        self.stretch_prob = 0.4
 
     def override_default_tfms(self, options):
         pass
@@ -73,7 +78,11 @@ class Transformation:
         self.background = background
         _, cropped_axis = self.edge_crop(image, True)
         self.resize(self.image, background.size)
-        return self.superimpose(self.image, self.background, cropped_axis)
+        self.superimpose(self.image, self.background, cropped_axis)
+        self.brighten(self.image)
+        self.contrast(self.image)
+
+        return self.image
 
     @property
     def random(self):
@@ -129,9 +138,26 @@ class Transformation:
         min_width, min_height = [self.min_coverage * x for x in canvas_size]
         max_width, max_height = [self.max_coverage * x for x in canvas_size]
         new_width, new_height = [self.random_int(min_width, max_width), self.random_int(min_height, max_height)]
-        image.thumbnail([new_width, new_height])
+        if self.can_stretch and self.random < self.stretch_prob:
+            self.image = image.resize([new_width, new_height], Image.ANTIALIAS)
+        else:
+            image.thumbnail([new_width, new_height], Image.ANTIALIAS)
         self.image = image
         return self.image
+
+    def change_lighting(self, image, func):
+        if self.random < self.lighting_prob:
+            enhancer = func(image)
+            pct = self.random * self.max_lighting
+            factor = 1 + pct if self.random < 0.5 else 1 - pct
+            self.image = enhancer.enhance(factor)
+        return self.image
+
+    def brighten(self, image):
+        return self.change_lighting(image, ImageEnhance.Brightness)
+
+    def contrast(self, image):
+        return self.change_lighting(image, ImageEnhance.Contrast)
 
     def superimpose(self, image, background, where_info=[0, 0, 0, 0]):
         x_options, y_options = background.size[0] - image.size[0], background.size[1] - image.size[1]
@@ -141,8 +167,8 @@ class Transformation:
         if where_info[1] or where_info[3]:
             y = where_info[3] * y_options
         background.paste(image, (x, y), mask=image)
+        self.image = background
         return background
-
 
 class ImageMaker:
     def __init__(self, data, num_samples, **kwargs):
@@ -155,12 +181,18 @@ class ImageMaker:
 
     def generate(self):
         for _ in tqdm(range(self.num_samples), ascii=True, desc="Progress"):
-            image = Image.open(random.choice(self.data.images)).convert('RGBA')
+            image_location = random.choice(self.data.images)
+            image = Image.open(image_location).convert('RGBA')
             image = self.augment(image)
-            background = Image.open(random.choice(self.data.backgrounds)).convert('RGBA')
+
+            bg_location = random.choice(self.data.backgrounds)
+            background = Image.open(bg_location).convert('RGBA')
 
             new_img = self.tfms.post_transform(image, background)
             new_img.show()
 
+
+    def save(self, image, location):
+        image.save(location)
 
 ImageMaker(ImageData('images', 'background'), 10).generate()
