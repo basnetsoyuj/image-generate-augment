@@ -1,13 +1,17 @@
 from PIL import Image, ImageFilter, ImageEnhance
-import os
+import time
 import random
 from tqdm import tqdm
 from utils import *
+import os
 
 
 class ImageData:
-    def __init__(self, img_files, bg_files):
+    def __init__(self, img_files, bg_files, **kwargs):
+        self.img_files = img_files
         self.images, self.backgrounds = self.load_images(img_files, bg_files)
+        self.options = kwargs
+        self.images = self.separate_classes()
 
     def load_images(self, img_files, bg_files):
         data = []
@@ -32,10 +36,37 @@ class ImageData:
             return f.readlines()
 
     def load_from_directory(self, directory):
-        return [os.path.join(directory, f) for f in os.listdir(directory) if self.check_if_img(f)]
+        images = []
+        for item in os.listdir(directory):
+            subdir = os.path.join(directory, item)
+            if os.path.isdir(subdir):
+                images.extend([os.path.join(subdir, f) for f in os.listdir(subdir) if self.check_if_img(f)])
+        images.extend([os.path.join(directory, f) for f in os.listdir(directory) if self.check_if_img(f)])
+        return images
 
     def check_if_img(self, name):
         return name.split('.')[-1].lower() in IMG_EXTENSIONS
+
+    def class_from_subdir(self):
+        data = {'': []}
+        for item in os.listdir(self.img_files):
+            if os.path.isdir(os.path.join(self.img_files, item)):
+                data[item] = []
+
+        for image in self.images:
+            for class_ in data.keys():
+                if class_ == '':
+                    continue
+                if os.path.join(class_, '') in image:
+                    data[class_].append(image)
+                    break
+            else:
+                data[''].append(image)
+        return data
+
+    def separate_classes(self):
+        if self.options.get('subdir_is_class'):
+            return self.class_from_subdir()
 
 
 class Transformation:
@@ -170,18 +201,32 @@ class Transformation:
         self.image = background
         return background
 
+
 class ImageMaker:
-    def __init__(self, data, num_samples, **kwargs):
+    def __init__(self, data, num_samples, output_dir, **kwargs):
         self.data = data
         self.num_samples = num_samples
         self.tfms = Transformation(kwargs)
+        self.output_dir = output_dir
 
     def augment(self, image):
         return self.tfms.transform(image)
 
     def generate(self):
+        classes = sorted(list(self.data.images.keys()))
+        for class_ in classes:
+            subdir = os.path.join(self.output_dir, class_)
+            if not os.path.exists(subdir):
+                os.mkdir(subdir)
+            if not self.data.images.get(class_):
+                classes.remove(class_)
+
         for _ in tqdm(range(self.num_samples), ascii=True, desc="Progress"):
-            image_location = random.choice(self.data.images)
+            class_ = random.choice(classes)
+            image_location = random.choice(self.data.images.get(class_))
+            appender = str(time.time()).replace('.', '') + '.'
+            img_name = appender.join(os.path.split(image_location)[-1].split('.'))
+
             image = Image.open(image_location).convert('RGBA')
             image = self.augment(image)
 
@@ -189,10 +234,10 @@ class ImageMaker:
             background = Image.open(bg_location).convert('RGBA')
 
             new_img = self.tfms.post_transform(image, background)
-            new_img.show()
-
+            self.save(new_img, os.path.join(self.output_dir, class_, img_name))
 
     def save(self, image, location):
         image.save(location)
 
-ImageMaker(ImageData('images', 'background'), 10).generate()
+
+ImageMaker(ImageData('images', 'background', subdir_is_class=True), 10, 'generated_samples').generate()
