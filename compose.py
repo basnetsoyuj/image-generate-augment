@@ -84,8 +84,8 @@ class Transformation:
         self.lighting_prob = 0.4
         self.can_blur = True
         self.prob_blur = 0.05
-        self.min_coverage = 0.95
-        self.max_coverage = 0.99
+        self.min_coverage = 0.85
+        self.max_coverage = 0.95
         self.can_edge_crop = True
         self.edge_crop_prob = 0.3
         self.max_edge_crop = 0.5
@@ -214,7 +214,7 @@ class ImageMaker:
 
     def generate(self):
         classes = sorted(list(self.data.images.keys()))
-        for class_ in classes:
+        for class_ in classes.copy():
             subdir = os.path.join(self.output_dir, class_)
             if not os.path.exists(subdir):
                 os.mkdir(subdir)
@@ -240,4 +240,4 @@ class ImageMaker:
         image.save(location)
 
 
-ImageMaker(ImageData('images', 'background', subdir_is_class=True), 10, 'generated_samples').generate()
+ImageMaker(ImageData('images', 'background', subdir_is_class=True), 20, 'generated_samples').generate()
