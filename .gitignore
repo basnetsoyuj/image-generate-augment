@@ -4,3 +4,4 @@ venv/
 *.png
 background/
 images/
+__pycache__/

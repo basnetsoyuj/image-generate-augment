@@ -2,11 +2,7 @@ from PIL import Image, ImageFilter
 import os
 import random
 from tqdm import tqdm
-
-IMG_ARG_ERROR = Exception("Image Argument should be set, tuple, list or string (name of file or directory)")
-FILE_OR_DIRECTORY_ERROR = Exception("Please specify an existing file or directory")
-IMG_EXTENSIONS = {'jpg', 'jpeg', 'png'}
-
+from utils import *
 
 class ImageData:
     def __init__(self, img_files, bg_files):
@@ -70,7 +66,6 @@ class Transformation:
         self.flip_vertical(self.image)
         self.rotate(self.image)
         self.blur(self.image)
-        self.edge_crop(self.image)
         return self.image
 
     def post_transform(self, image, background):
@@ -78,7 +73,7 @@ class Transformation:
         self.background = background
         _, cropped_axis = self.edge_crop(image, True)
         self.resize(self.image, background.size)
-        return self.superimpose(self.image, self.background,cropped_axis)
+        return self.superimpose(self.image, self.background, cropped_axis)
 
     @property
     def random(self):
@@ -147,6 +142,7 @@ class Transformation:
             y = where_info[3] * y_options
         background.paste(image, (x, y), mask=image)
         return background
+
 
 class ImageMaker:
     def __init__(self, data, num_samples, **kwargs):
